@@ -1,0 +1,10 @@
+﻿<wpf:ResourceDictionary xml:space="preserve" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:s="clr-namespace:System;assembly=mscorlib" xmlns:ss="urn:shemas-jetbrains-com:settings-storage-xaml" xmlns:wpf="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=f0375ed6_002D977e_002D41e1_002Dab94_002D199605e5a70f/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" IsActive="True" Name="TestListSquads" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;&#xD;
+  &lt;TestAncestor&gt;&#xD;
+    &lt;TestId&gt;xUnit::7CB22E64-0A38-4326-B29A-966995821D43::net7.0::Squadmania.Squad.Rcon.Tests.ListSquadsParserTests.TestListSquads&lt;/TestId&gt;&#xD;
+    &lt;TestId&gt;xUnit::7CB22E64-0A38-4326-B29A-966995821D43::net7.0::Squadmania.Squad.Rcon.Tests.ListPlayersParserTests.TestListPlayers&lt;/TestId&gt;&#xD;
+  &lt;/TestAncestor&gt;&#xD;
+&lt;/SessionState&gt;</s:String>
+	<s:Boolean x:Key="/Default/UserDictionary/Words/=Endian/@EntryIndexedValue">True</s:Boolean>
+	<s:Boolean x:Key="/Default/UserDictionary/Words/=Rcon/@EntryIndexedValue">True</s:Boolean>
+	<s:Boolean x:Key="/Default/UserDictionary/Words/=Squadmania/@EntryIndexedValue">True</s:Boolean></wpf:ResourceDictionary>
