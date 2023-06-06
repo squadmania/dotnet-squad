@@ -36,7 +36,7 @@ namespace Squadmania.Squad.Rcon
             {
                 _taskCompletionSource.SetResult(_packets);
             }
-            catch (Exception e)
+            catch
             {
                 Console.WriteLine("some error occurred");
             }

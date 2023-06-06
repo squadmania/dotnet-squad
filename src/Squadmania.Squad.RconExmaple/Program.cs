@@ -18,19 +18,13 @@ namespace Squadmania.Squad.RconExmaple
 
             rconClient.Connect();
 
-            var commands = await rconClient.ListCommandsAsync(CancellationToken.None);
-
-            for (var i = 0; i < 1000; i++)
+            while (true)
             {
-                var j = i;
-                Task.Run(
-                    async () =>
-                    {
-                        var commands = await rconClient.ListCommandsAsync(CancellationToken.None);
-                        
-                        Console.WriteLine($"Received {j}");
-                    }
-                ).ConfigureAwait(false);
+                var line = Console.ReadLine();
+
+                var result = await rconClient.WriteCommandAsync(line, CancellationToken.None);
+                
+                Console.WriteLine(Encoding.UTF8.GetString(result));
             }
 
             Console.ReadKey();

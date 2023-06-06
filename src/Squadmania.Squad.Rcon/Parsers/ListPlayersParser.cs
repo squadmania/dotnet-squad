@@ -24,7 +24,8 @@ namespace Squadmania.Squad.Rcon.Parsers
         {
             input = input
                 .Replace(ActivePlayersHeader, "")
-                .Replace(DisconnectedPlayersHeader, "");
+                .Replace(DisconnectedPlayersHeader, "")
+                .Replace("\r\n", "\n");
             var lines = input.Split("\n");
 
             var result = new ListPlayersResult(

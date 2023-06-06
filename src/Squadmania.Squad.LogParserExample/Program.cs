@@ -1,5 +1,6 @@
 ﻿
 using Squadmania.Squad.LogParser;
+using Squadmania.Squad.LogParser.Parsers;
 
 namespace Squadmania.Squad.LogParserExample;
 
@@ -9,12 +10,19 @@ public static class Program
         string[] args
     )
     {
-        var fileLineReader = new FileLineReader(@"C:\Users\agphe\Documents\SquadTestServer\server\SquadGame\Saved\Logs\SquadGame.log");
+        var fileLineReader = new FileLineReader(@"test\SquadGame.log");
 
+        var logMessageParser = new LogMessageParser();
+        
         while (true)
         {
             var line = fileLineReader.ReadLine();
-            Console.WriteLine(line);
+            var logMessage = logMessageParser.Parse(line);
+            
+            if (logMessage is { Payload: not null })
+            {
+                Console.WriteLine(line);
+            }
         }
     }
 }

@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Squadmania.Squad.LogParserE
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Squadmania.Squad.Rcon.Tests", "Squadmania.Squad.Rcon.Tests\Squadmania.Squad.Rcon.Tests.csproj", "{7CB22E64-0A38-4326-B29A-966995821D43}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Squadmania.Squad.LogParser.Tests", "Squadmania.Squad.LogParser.Tests\Squadmania.Squad.LogParser.Tests.csproj", "{DCA07DEB-3077-47A0-9CE0-979D7242847F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,6 +41,10 @@ Global
 		{7CB22E64-0A38-4326-B29A-966995821D43}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7CB22E64-0A38-4326-B29A-966995821D43}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7CB22E64-0A38-4326-B29A-966995821D43}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DCA07DEB-3077-47A0-9CE0-979D7242847F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DCA07DEB-3077-47A0-9CE0-979D7242847F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DCA07DEB-3077-47A0-9CE0-979D7242847F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DCA07DEB-3077-47A0-9CE0-979D7242847F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

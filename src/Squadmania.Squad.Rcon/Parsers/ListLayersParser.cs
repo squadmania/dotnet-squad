@@ -11,7 +11,8 @@ namespace Squadmania.Squad.Rcon.Parsers
             string input
         )
         {
-            input = input.Replace(Header, "");
+            input = input.Replace(Header, "")
+                .Replace("\r\n", "\n");
             
             return input.Split("\n").ToList();
         }

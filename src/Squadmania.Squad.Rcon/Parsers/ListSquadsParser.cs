@@ -18,7 +18,9 @@ namespace Squadmania.Squad.Rcon.Parsers
             string input
         )
         {
-            input = input.Replace(Header, "");
+            input = input
+                .Replace(Header, "")
+                .Replace("\r\n", "\n");
             var lines = input.Split("\n");
 
             var team = Team.Team1;

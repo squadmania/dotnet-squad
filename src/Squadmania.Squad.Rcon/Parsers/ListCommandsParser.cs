@@ -11,7 +11,9 @@ namespace Squadmania.Squad.Rcon.Parsers
         
         public List<Command> Parse(string input)
         {
-            var allLines = input.Split("\n");
+            var allLines = input
+                .Replace("\r\n", "\n")
+                .Split("\n");
             if (allLines.Length <= 1)
             {
                 return new List<Command>();

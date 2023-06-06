@@ -214,14 +214,14 @@ namespace Squadmania.Squad.Rcon
         {
             var buffer = packets.SelectMany(x => x.ToArray()).ToArray();
 
-            _socket.BeginSend(buffer, 0, buffer.Length, SocketFlags.None, WritePacketsCallback, null);
+            _socket?.BeginSend(buffer, 0, buffer.Length, SocketFlags.None, WritePacketsCallback, null);
         }
 
         private void WritePacketsCallback(
             IAsyncResult asyncResult
         )
         {
-            _socket.EndSend(asyncResult);
+            _socket?.EndSend(asyncResult);
         }
 
         protected int GetNextPacketId()
@@ -261,7 +261,7 @@ namespace Squadmania.Squad.Rcon
             var previousBufferLength = PreviousBuffer.Length;
             if (previousBufferLength == 0)
             {
-                _socket.BeginReceive(data, 0, size, SocketFlags.None, callback, state);
+                _socket?.BeginReceive(data, 0, size, SocketFlags.None, callback, state);
                 return;
             }
             
@@ -281,7 +281,7 @@ namespace Squadmania.Squad.Rcon
             
             var remainingCount = size - previousBufferLength;
 
-            _socket.BeginReceive(data, previousBufferLength, remainingCount, SocketFlags.None, callback, state);
+            _socket?.BeginReceive(data, previousBufferLength, remainingCount, SocketFlags.None, callback, state);
         }
 
         private Packet Read()
@@ -339,7 +339,7 @@ namespace Squadmania.Squad.Rcon
             var previousBufferLength = PreviousBuffer.Length;
             if (previousBufferLength == 0)
             {
-                return _socket.Receive(data, 0, size, SocketFlags.None);
+                return _socket!.Receive(data, 0, size, SocketFlags.None);
             }
 
             if (previousBufferLength >= size)
@@ -355,7 +355,7 @@ namespace Squadmania.Squad.Rcon
 
             var remainingCount = size - previousBufferLength;
 
-            var bytesReceived = _socket.Receive(data, previousBufferLength, remainingCount, SocketFlags.None);
+            var bytesReceived = _socket!.Receive(data, previousBufferLength, remainingCount, SocketFlags.None);
             return previousBufferLength + bytesReceived;
         }
         
@@ -364,14 +364,14 @@ namespace Squadmania.Squad.Rcon
             Packet packet
         )
         {
-            _socket.Send(packet.ToArray());
+            _socket?.Send(packet.ToArray());
         }
 
         private void Write(
             params Packet[] packets
         )
         {
-            _socket.Send(
+            _socket?.Send(
                 packets
                     .SelectMany(x => x.ToArray())
                     .ToArray()
