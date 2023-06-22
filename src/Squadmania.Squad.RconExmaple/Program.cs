@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using System.Text;
 using Squadmania.Squad.Rcon;
+using Squadmania.Squad.Rcon.Parsers;
 
 namespace Squadmania.Squad.RconExmaple
 {
@@ -17,6 +18,9 @@ namespace Squadmania.Squad.RconExmaple
             );
 
             rconClient.Connect();
+            
+            rconClient.ChatMessageReceived += ChatMessageReceivedHandler;
+            rconClient.SquadCreatedMessageReceived += SquadCreatedMessageReceivedHandler;
 
             while (true)
             {
@@ -28,6 +32,20 @@ namespace Squadmania.Squad.RconExmaple
             }
 
             Console.ReadKey();
+        }
+
+        private static void SquadCreatedMessageReceivedHandler(
+            SquadCreatedMessage squadCreatedMessage
+        )
+        {
+            Console.WriteLine($"Squad created message received: {squadCreatedMessage.SquadName}, {squadCreatedMessage.PlayerSteamId64}");
+        }
+
+        private static void ChatMessageReceivedHandler(
+            ChatMessage chatMessage
+        )
+        {
+            Console.WriteLine($"Normal message received: {chatMessage.Message}");
         }
     }
 }

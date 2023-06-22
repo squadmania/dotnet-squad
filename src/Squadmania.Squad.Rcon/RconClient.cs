@@ -13,38 +13,17 @@ using Squadmania.Squad.Rcon.Parsers;
 
 namespace Squadmania.Squad.Rcon
 {
-    internal struct CompletedAsyncResult : IAsyncResult
-    {
-        public CompletedAsyncResult(
-            object asyncState
-        )
-        {
-            AsyncState = asyncState;
-        }
-
-        public object AsyncState { get; }
-        public WaitHandle AsyncWaitHandle => new Mutex();
-        public bool CompletedSynchronously => true;
-        public bool IsCompleted => true;
-    }
-    
-    public readonly struct PacketReadState
-    {
-        public PacketReadState(
-            byte[] data
-        )
-        {
-            Data = data;
-        }
-
-        public byte[] Data { get; }
-    }
-    
     public class RconClient : IDisposable
     {
         public ListCommandsParser ListCommandsParser { get; set; } = new ListCommandsParser();
         public ListSquadsParser ListSquadsParser { get; set; } = new ListSquadsParser();
-        
+        public ListLayersParser ListLayersParser { get; set; } = new ListLayersParser();
+        public ListLevelsParser ListLevelsParser { get; set; } = new ListLevelsParser();
+        public ListPlayersParser ListPlayersParser { get; set; } = new ListPlayersParser();
+
+        private readonly ChatMessageParser _chatMessageParser = new();
+        private readonly SquadCreatedMessageParser _squadCreatedMessageParser = new();
+
         public bool IsConnected => _socket is { Connected: true };
         private byte[] PreviousBuffer { get; set; } = Array.Empty<byte>();
         
@@ -57,6 +36,9 @@ namespace Squadmania.Squad.Rcon
 
         private readonly ConcurrentDictionary<int, RconClientCommandResult> _rconClientCommands =
             new ConcurrentDictionary<int, RconClientCommandResult>();
+
+        public event Action<ChatMessage>? ChatMessageReceived;
+        public event Action<SquadCreatedMessage>? SquadCreatedMessageReceived;
 
         public RconClient(IPEndPoint endPoint, string password)
         {
@@ -231,6 +213,32 @@ namespace Squadmania.Squad.Rcon
         
         protected virtual void ProcessPacket(Packet packet)
         {
+            if (packet.Type == PacketType.ServerDataChatMessage)
+            {
+                Task.Run(
+                    () =>
+                    {
+                        var rawMessage = Encoding.UTF8.GetString(packet.Body);
+
+                        var chatMessage = _chatMessageParser.Parse(rawMessage);
+                        if (chatMessage.HasValue)
+                        {
+                            OnChatMessageReceived(chatMessage.Value);
+                            return;
+                        }
+
+                        var squadCreatedMessage = _squadCreatedMessageParser.Parse(rawMessage);
+                        if (!squadCreatedMessage.HasValue)
+                        {
+                            return;
+                        }
+                        
+                        OnSquadCreatedMessageReceived(squadCreatedMessage.Value);
+                    }
+                );
+                return;
+            }
+            
             if (!_rconClientCommands.TryGetValue(packet.Id, out var command))
             {
                 return;
@@ -400,7 +408,7 @@ namespace Squadmania.Squad.Rcon
         {
             var result = await WriteCommandAsync("ListSquads", cancellationToken);
 
-            return new ListSquadsParser().Parse(Encoding.UTF8.GetString(result));
+            return ListSquadsParser.Parse(Encoding.UTF8.GetString(result));
         }
 
         public async Task<ListPlayersResult> ListPlayersAsync(
@@ -409,7 +417,7 @@ namespace Squadmania.Squad.Rcon
         {
             var result = await WriteCommandAsync("ListPlayers", cancellationToken);
 
-            return new ListPlayersParser().Parse(Encoding.UTF8.GetString(result));
+            return ListPlayersParser.Parse(Encoding.UTF8.GetString(result));
         }
 
         public async Task<List<string>> ListLevelsAsync(
@@ -418,7 +426,7 @@ namespace Squadmania.Squad.Rcon
         {
             var result = await WriteCommandAsync("ListLevels", cancellationToken);
 
-            return new ListLevelsParser().Parse(Encoding.UTF8.GetString(result));
+            return ListLevelsParser.Parse(Encoding.UTF8.GetString(result));
         }
 
         public async Task<List<string>> ListLayersAsync(
@@ -427,7 +435,7 @@ namespace Squadmania.Squad.Rcon
         {
             var result = await WriteCommandAsync("ListLayers", cancellationToken);
 
-            return new ListLayersParser().Parse(Encoding.UTF8.GetString(result));
+            return ListLayersParser.Parse(Encoding.UTF8.GetString(result));
         }
 
         public async Task AdminKickAsync(
@@ -714,5 +722,19 @@ namespace Squadmania.Squad.Rcon
         }
 
         #endregion
+
+        protected virtual void OnChatMessageReceived(
+            ChatMessage chatMessage
+        )
+        {
+            ChatMessageReceived?.Invoke(chatMessage);
+        }
+
+        protected virtual void OnSquadCreatedMessageReceived(
+            SquadCreatedMessage squadCreatedMessage
+        )
+        {
+            SquadCreatedMessageReceived?.Invoke(squadCreatedMessage);
+        }
     }
 }

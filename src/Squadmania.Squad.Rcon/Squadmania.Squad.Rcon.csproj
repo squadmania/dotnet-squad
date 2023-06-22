@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <LangVersion>9</LangVersion>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>0.0.1</Version>
+    <Version>0.1.0</Version>
     <Title>Squadmania.Squad.Rcon</Title>
     <Description>Allows connecting to a Squad game server RCON server.</Description>
     <Copyright>GNU AGPLv3</Copyright>
