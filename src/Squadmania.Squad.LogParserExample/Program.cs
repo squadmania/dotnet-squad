@@ -10,19 +10,18 @@ public static class Program
         string[] args
     )
     {
-        var fileLineReader = new FileLineReader(@"test\SquadGame.log");
-
+        var continuousFileLineReader = new ContinuousFileLineReader(@"test\SquadGame.log");
         var logMessageParser = new LogMessageParser();
-        
-        while (true)
+        var logMessageReader = new LogMessageReader(continuousFileLineReader, logMessageParser);
+
+        await foreach (var logMessage in logMessageReader)
         {
-            var line = fileLineReader.ReadLine();
-            var logMessage = logMessageParser.Parse(line);
-            
-            if (logMessage is { Payload: not null })
+            if (logMessage.Payload == null)
             {
-                Console.WriteLine(line);
+                continue;
             }
+            
+            Console.WriteLine(logMessage.Raw);
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿namespace Squadmania.Squad.Rcon.Parsers
+﻿namespace Squadmania.Squad.Rcon.Models
 {
     public enum ChatMessageChannel
     {

@@ -9,7 +9,7 @@ namespace Squadmania.Squad.LogParser.Models
             string raw,
             LogMessageType type,
             int chainId,
-            DateTime dateTime,
+            DateTimeOffset dateTime,
             string rawLog,
             object? payload = null
         )
@@ -24,7 +24,7 @@ namespace Squadmania.Squad.LogParser.Models
 
         public string Raw { get; }
         public LogMessageType Type { get; }
-        public DateTime DateTime { get; }
+        public DateTimeOffset DateTime { get; }
         public int ChainId { get; }
         public string RawLog { get; }
         public object? Payload { get; }

@@ -5,7 +5,8 @@ namespace Squadmania.Squad.LogParser.Parsers
 {
     public sealed class PlayerUnPossessPayloadParser : IPayloadParser<PlayerUnPossessPayload>
     {
-        private static readonly Regex PayloadRegex = new(@"\[DedicatedServer](?:ASQPlayerController::)?OnUnPossess\(\): PC=(.+)");
+        private static readonly Regex PayloadRegex = new(@"\[DedicatedServer](?:ASQPlayerController::)?OnUnPossess\(\): PC=(.+)$");
+        private static readonly Regex CurrentHealthRegex = new(@"(.+) current health value ([0-9\.]+)$");
         
         public LogMessageType LogMessageType => LogMessageType.SquadTrace;
 
@@ -19,8 +20,16 @@ namespace Squadmania.Squad.LogParser.Parsers
                 return null;
             }
 
+            var possessClassname = match.Groups[1].Value;
+
+            match = CurrentHealthRegex.Match(possessClassname);
+            if (match.Success)
+            {
+                possessClassname = match.Groups[1].Value;
+            }
+
             return new PlayerUnPossessPayload(
-                match.Groups[1].Value
+                possessClassname
             );
         }
 

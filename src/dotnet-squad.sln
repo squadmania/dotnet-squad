@@ -5,7 +5,7 @@ VisualStudioVersion = 17.5.33414.496
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Squadmania.Squad.Rcon", "Squadmania.Squad.Rcon\Squadmania.Squad.Rcon.csproj", "{732E215B-D3EB-481D-BB58-3A9D13D44C00}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Squadmania.Squad.RconExmaple", "Squadmania.Squad.RconExmaple\Squadmania.Squad.RconExmaple.csproj", "{903DE06C-07E4-40E4-843E-7DAF0A51F075}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Squadmania.Squad.RconExample", "Squadmania.Squad.RconExample\Squadmania.Squad.RconExample.csproj", "{903DE06C-07E4-40E4-843E-7DAF0A51F075}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Squadmania.Squad.LogParser", "Squadmania.Squad.LogParser\Squadmania.Squad.LogParser.csproj", "{E8587DB4-8A42-42B2-A9DF-75CF06566E53}"
 EndProject
@@ -14,6 +14,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Squadmania.Squad.Rcon.Tests", "Squadmania.Squad.Rcon.Tests\Squadmania.Squad.Rcon.Tests.csproj", "{7CB22E64-0A38-4326-B29A-966995821D43}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Squadmania.Squad.LogParser.Tests", "Squadmania.Squad.LogParser.Tests\Squadmania.Squad.LogParser.Tests.csproj", "{DCA07DEB-3077-47A0-9CE0-979D7242847F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Squadmania.Squad.Rcon.Cli", "Squadmania.Squad.Rcon.Cli\Squadmania.Squad.Rcon.Cli.csproj", "{66406284-9704-4C93-B406-599D21C83F16}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -45,6 +47,10 @@ Global
 		{DCA07DEB-3077-47A0-9CE0-979D7242847F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DCA07DEB-3077-47A0-9CE0-979D7242847F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DCA07DEB-3077-47A0-9CE0-979D7242847F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{66406284-9704-4C93-B406-599D21C83F16}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{66406284-9704-4C93-B406-599D21C83F16}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{66406284-9704-4C93-B406-599D21C83F16}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{66406284-9704-4C93-B406-599D21C83F16}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

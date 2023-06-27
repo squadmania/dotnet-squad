@@ -1,18 +1,16 @@
-﻿using System;
-
-namespace Squadmania.Squad.Rcon.Parsers
+﻿namespace Squadmania.Squad.Rcon.Models
 {
     public readonly struct SquadCreatedMessage
     {
         public string PlayerNameWithoutPrefix { get; }
-        public long PlayerSteamId64 { get; }
+        public ulong PlayerSteamId64 { get; }
         public int SquadId { get; }
         public string SquadName { get; }
         public string TeamName { get; }
 
         public SquadCreatedMessage(
             string playerNameWithoutPrefix,
-            long playerSteamId64,
+            ulong playerSteamId64,
             int squadId,
             string squadName,
             string teamName

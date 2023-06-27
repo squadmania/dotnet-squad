@@ -6,7 +6,7 @@ namespace Squadmania.Squad.LogParser.Parsers
 {
     public sealed class PlayerPossessPayloadParser : IPayloadParser<PlayerPossessPayload>
     {
-        private static readonly Regex PayloadRegex = new(@"\[DedicatedServer](?:ASQPlayerController::)?OnPossess\(\): PC=(.+) Pawn=([A-z0-9_]+_C)");
+        private static readonly Regex PayloadRegex = new(@"\[DedicatedServer](?:ASQPlayerController::)?OnPossess\(\): PC=(.+) Pawn=([A-Za-z0-9_]+) FullPath=([A-Za-z0-9\. _\/]+)");
         
         public LogMessageType LogMessageType => LogMessageType.SquadTrace;
 
@@ -22,7 +22,8 @@ namespace Squadmania.Squad.LogParser.Parsers
 
             return new PlayerPossessPayload(
                 match.Groups[1].Value,
-                match.Groups[2].Value
+                match.Groups[2].Value,
+                match.Groups[3].Value
             );
         }
 

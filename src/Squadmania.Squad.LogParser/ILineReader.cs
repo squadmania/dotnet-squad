@@ -1,7 +1,8 @@
-﻿namespace Squadmania.Squad.LogParser
+﻿using System.Collections.Generic;
+
+namespace Squadmania.Squad.LogParser
 {
-    public interface ILineReader
+    public interface ILineReader : IAsyncEnumerable<string>
     {
-        public string ReadLine();
     }
 }

@@ -1,4 +1,5 @@
 ﻿using System.Text.RegularExpressions;
+using Squadmania.Squad.Rcon.Models;
 
 namespace Squadmania.Squad.Rcon.Parsers
 {
@@ -50,7 +51,7 @@ namespace Squadmania.Squad.Rcon.Parsers
                 return null;
             }
 
-            if (!long.TryParse(match.Groups[2].Value, out var playerSteamId64))
+            if (!ulong.TryParse(match.Groups[2].Value, out var playerSteamId64))
             {
                 return null;
             }

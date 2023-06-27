@@ -1,71 +1,37 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Squadmania.Squad.LogParser
 {
-    public class FileLineReader : ILineReader, IDisposable, IAsyncDisposable
+    public sealed class FileLineReader : ILineReader
     {
-        private readonly FileStream _fileStream;
-        private readonly StreamReader _streamReader;
-        private readonly AutoResetEvent _autoResetEvent;
-        private readonly FileSystemWatcher _fileSystemWatcher;
+        private readonly string _filepath;
 
         public FileLineReader(
-            string filepath
+            string filepath)
+        {
+            _filepath = Path.GetFullPath(filepath);
+        }
+
+        public async IAsyncEnumerator<string> GetAsyncEnumerator(
+            CancellationToken cancellationToken = new()
         )
         {
-            filepath = Path.GetFullPath(filepath);
-            _fileStream = File.Open(
-                filepath,
+            await using var fileStream = File.Open(
+                _filepath,
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.ReadWrite
             );
-            _streamReader = new StreamReader(_fileStream);
+            using var streamReader = new StreamReader(fileStream);
 
-            _autoResetEvent = new AutoResetEvent(false);
-            
-            _fileSystemWatcher = new FileSystemWatcher(Path.GetDirectoryName(filepath));
-            _fileSystemWatcher.Filter = Path.GetFileName(filepath);
-            _fileSystemWatcher.IncludeSubdirectories = false;
-            _fileSystemWatcher.EnableRaisingEvents = true;
-            _fileSystemWatcher.Changed += FileChangedHandler;
-        }
-
-        private void FileChangedHandler(
-            object sender,
-            FileSystemEventArgs e
-        )
-        {
-            _autoResetEvent.Set();
-        }
-
-        public virtual void Dispose()
-        {
-            _fileStream.Dispose();
-            _streamReader.Dispose();
-        }
-
-        public virtual string ReadLine()
-        {
-            var line = _streamReader.ReadLine();
-            while (line == null)
+            while (!cancellationToken.IsCancellationRequested)
             {
-                line = _streamReader.ReadLine();
-                _autoResetEvent.WaitOne();
+                yield return await streamReader.ReadLineAsync();
             }
-
-            return line;
-        }
-
-        public virtual async ValueTask DisposeAsync()
-        {
-            await _fileStream.DisposeAsync();
-            _streamReader.Dispose();
-            _fileSystemWatcher.Dispose();
-            _autoResetEvent.Dispose();
         }
     }
 }

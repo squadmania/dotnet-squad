@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -15,117 +14,191 @@ namespace Squadmania.Squad.Rcon
 {
     public class RconClient : IDisposable
     {
-        public ListCommandsParser ListCommandsParser { get; set; } = new ListCommandsParser();
-        public ListSquadsParser ListSquadsParser { get; set; } = new ListSquadsParser();
-        public ListLayersParser ListLayersParser { get; set; } = new ListLayersParser();
-        public ListLevelsParser ListLevelsParser { get; set; } = new ListLevelsParser();
-        public ListPlayersParser ListPlayersParser { get; set; } = new ListPlayersParser();
+        public ListCommandsParser ListCommandsParser { get; set; } = new ();
+        public ListSquadsParser ListSquadsParser { get; set; } = new ();
+        public ListLayersParser ListLayersParser { get; set; } = new ();
+        public ListLevelsParser ListLevelsParser { get; set; } = new ();
+        public ListPlayersParser ListPlayersParser { get; set; } = new ();
 
         private readonly ChatMessageParser _chatMessageParser = new();
         private readonly SquadCreatedMessageParser _squadCreatedMessageParser = new();
 
-        public bool IsConnected => _socket is { Connected: true };
-        private byte[] PreviousBuffer { get; set; } = Array.Empty<byte>();
+        public bool IsStarted => _workerThread != null;
         
         private readonly IPEndPoint _endPoint;
         private readonly string _password;
         
-        private Socket? _socket;
+        private int _packetIdCounter = 3;
+
+        private DateTime _lastReceivedPing = DateTime.UtcNow;
+
+        private readonly ConcurrentDictionary<int, RconClientCommandResult> _pendingCommandResults = new ();
+
+        private readonly ConcurrentQueue<Packet[]> _packageWriteQueue = new ();
+
+        private Thread? _workerThread;
+        private CancellationTokenSource? _threadCancellationTokenSource;
         
-        private int _packetIdCounter;
-
-        private readonly ConcurrentDictionary<int, RconClientCommandResult> _rconClientCommands =
-            new ConcurrentDictionary<int, RconClientCommandResult>();
-
+        public event Action? Connected;
+        public event Action<Packet>? PacketReceived; 
         public event Action<ChatMessage>? ChatMessageReceived;
         public event Action<SquadCreatedMessage>? SquadCreatedMessageReceived;
+        public event Action<byte[]>? BytesReceived;
+        public event Action? PingReceived; 
 
-        public RconClient(IPEndPoint endPoint, string password)
+        public RconClient(
+            IPEndPoint endPoint,
+            string password
+        )
         {
             _endPoint = endPoint;
             _password = password;
         }
 
-        public void Connect()
+        private void ThreadHandler(object _)
         {
-            _socket = new Socket(_endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-            _socket.Connect(_endPoint);
-
-            Authenticate();
-            
-            // start listening for first async packet
-            SetupContextSwitchedPacket();
-        }
-
-        private void SetupContextSwitchedPacket()
-        {
-            var state = new PacketReadState(new byte[4]);
-            BeginBufferOrReceive(state.Data, 4, ReadPacketSizeCallback, state);
-        }
-
-        private void ReadPacketSizeCallback(
-            IAsyncResult asyncResult
-        )
-        {
-            var state = (PacketReadState)asyncResult.AsyncState;
-            var size = Packet.ParseSize(state.Data);
-
-            PacketReadState dataState;
-            
-            if (size == 10 && _socket!.Available + PreviousBuffer.Length >= 17)
+            var cancellationTokenSource = _threadCancellationTokenSource;
+            if (cancellationTokenSource == null)
             {
-                dataState = new PacketReadState(new byte[17]);
-                BeginBufferOrReceive(dataState.Data, 17, ReadBrokenPacketDataCallback, dataState);
+                throw new Exception("No cancellation token source provided for the thread");
+            }
+
+            var nextPing = DateTime.UtcNow;
+
+            while (!cancellationTokenSource.IsCancellationRequested)
+            {
+                using var socket = new Socket(_endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+                socket.Connect(_endPoint);
+                Authenticate(socket);
+                OnConnected();
+
+                var buffer = new byte[4096 + 7]; // maximum packet size + 7 bytes of broken package body
+                var actualBufferLength = 0;
+
+                while (!cancellationTokenSource.IsCancellationRequested)
+                {
+                    var dataAvailable = socket.Available;
+                    if (dataAvailable > 0)
+                    {
+                        var dataToRead = Math.Min(buffer.Length - actualBufferLength, dataAvailable);
+
+                        var bytesRead = socket.Receive(buffer, actualBufferLength, dataToRead, SocketFlags.None);
+                        if (bytesRead != dataToRead)
+                        {
+                            throw new Exception("some bad bytes came in");
+                        }
+
+                        OnBytesReceived(buffer[actualBufferLength..(actualBufferLength + dataToRead)]);
+
+                        actualBufferLength += bytesRead;
+                    }
+
+                    if (actualBufferLength > 0)
+                    {
+                        var packetSize = Packet.ParseSize(buffer[..4]);
+
+                        if (packetSize <= actualBufferLength)
+                        {
+                            ShiftBytesLeft(buffer, 4);
+                            actualBufferLength -= 4;
+                            
+                            Packet packet;
+
+                            // check for broken package:
+                            // The Squad server sends an invalid packet on an appending empty exec command packet.
+                            // It has to be filtered out here, because it is not needed and makes no sense regarding the Source Rcon protocol.
+                            if (packetSize == 10)
+                            {
+                                var maybeBrokenBuffer = buffer[..17];
+                                packet = Packet.Parse(maybeBrokenBuffer);
+                                if (packet.IsBroken)
+                                {
+                                    ShiftBytesLeft(buffer, 17);
+                                    actualBufferLength -= 17;
+                                }
+                                else
+                                {
+                                    packet = Packet.Parse(buffer[..10]);
+                                    ShiftBytesLeft(buffer, 10);
+                                    actualBufferLength -= 10;
+
+                                    try
+                                    {
+                                        ProcessPacket(packet);
+                                    }
+                                    catch (Exception e)
+                                    {
+                                        Console.WriteLine(e.Message);
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                packet = Packet.Parse(buffer[..packetSize]);
+                                ShiftBytesLeft(buffer, packetSize);
+                                actualBufferLength -= packetSize;
+                                try
+                                {
+                                    ProcessPacket(packet);
+                                }
+                                catch (Exception e)
+                                {
+                                    Console.WriteLine(e.Message);
+                                }
+                            }
+                        }
+                    }
+
+                    while (_packageWriteQueue.TryDequeue(out var packetGroup))
+                    {
+                        Send(socket, packetGroup);
+                    }
+
+                    // ping s.t. the connection is not destroyed
+                    if (nextPing < DateTime.UtcNow)
+                    {
+                        Send(socket, new Packet(3, PacketType.ServerDataExecCommand, "", false, Encoding.UTF8));
+                        nextPing = DateTime.UtcNow.AddMinutes(1);
+                    }
+
+                    if (DateTime.UtcNow - _lastReceivedPing > TimeSpan.FromMinutes(2))
+                    {
+                        break;
+                    }
+
+                    Thread.Yield();
+                }
                 
-                return;
+                foreach (var result in _pendingCommandResults)
+                {
+                    result.Value.Cancel();
+                }
+            
+                _pendingCommandResults.Clear();
+                _packageWriteQueue.Clear();
+                _packetIdCounter = 3;
+
+                Thread.Yield(); // yield the thread before starting a new connection
             }
-
-            dataState = new PacketReadState(new byte[size]);
-            BeginBufferOrReceive(dataState.Data, size, ReadPacketDataCallback, dataState);
         }
 
-        private void ReadPacketDataCallback(
-            IAsyncResult asyncResult
+        private static void ShiftBytesLeft(
+            byte[] bytes,
+            int shiftLength
         )
         {
-            var state = (PacketReadState)asyncResult.AsyncState;
-
-            var packet = Packet.Parse(state.Data);
-            
-            ProcessPacket(packet);
-            
-            // continue listening for async packet
-            SetupContextSwitchedPacket();
-        }
-
-        private void ReadBrokenPacketDataCallback(
-            IAsyncResult asyncResult
-        )
-        {
-            var state = (PacketReadState)asyncResult.AsyncState;
-            
-            var packet = Packet.Parse(state.Data);
-            if (packet.IsBroken)
+            if (shiftLength >= bytes.Length)
             {
-                // continue listening for async packet
-                SetupContextSwitchedPacket();
-                return;
+                throw new Exception("invalid shift length given");
             }
-
-            packet = Packet.Parse(state.Data[..10]);
-
-            var newPreviousBuffer = new byte[7 + PreviousBuffer.Length];
-            state.Data[10..].CopyTo(newPreviousBuffer, 0);
-            PreviousBuffer.CopyTo(newPreviousBuffer, 7);
-            PreviousBuffer = newPreviousBuffer;
             
-            ProcessPacket(packet);
-            
-            // continue listening for async packet
-            SetupContextSwitchedPacket();
+            for (var i = 0; i < bytes.Length; i++)
+            {
+                bytes[i] = i + shiftLength >= bytes.Length ? (byte)0 : bytes[i + shiftLength];
+            }
         }
-
-        private void Authenticate()
+        
+        private void Authenticate(Socket socket)
         {
             var authPacketId = GetNextPacketId();
             var requestPacket = new Packet(
@@ -133,31 +206,70 @@ namespace Squadmania.Squad.Rcon
                 PacketType.ServerDataAuth,
                 _password
             );
-            Write(requestPacket);
+            Send(socket, requestPacket);
 
-            Read();
-            var response2 = Read();
+            // we have to receive the first packet, though we do not need its contents.
+            ReceivePacket(socket);
+            var packet = ReceivePacket(socket);
 
-            if (response2.Id == -1)
+            if (packet.Id == -1)
             {
                 throw new Exception("invalid authentication password");
             }
         }
 
-        public void Disconnect()
+        private static Packet ReceivePacket(Socket socket)
         {
-            _socket?.Close();
-            _socket?.Dispose();
-            _socket = null;
+            var sizeBuffer = new byte[4];
+            var bytesRead = socket.Receive(sizeBuffer);
+            if (bytesRead != 4)
+            {
+                throw new Exception("invalid bytes read");
+            }
 
-            foreach (var result in _rconClientCommands)
+            var packetSize = Packet.ParseSize(sizeBuffer);
+            var packetBuffer = new byte[packetSize];
+            bytesRead = socket.Receive(packetBuffer);
+            if (bytesRead != packetSize)
+            {
+                throw new Exception("invalid bytes read");
+            }
+
+            return Packet.Parse(packetBuffer);
+        }
+
+        public void Start()
+        {
+            if (IsStarted)
+            {
+                return;
+            }
+            
+            _threadCancellationTokenSource = new CancellationTokenSource();
+            _workerThread = new Thread(ThreadHandler)
+            {
+                IsBackground = true
+            };
+            _workerThread.Start();
+        }
+        
+        public void Stop()
+        {
+            foreach (var result in _pendingCommandResults)
             {
                 result.Value.Cancel();
             }
             
-            _rconClientCommands.Clear();
+            _pendingCommandResults.Clear();
+            _packageWriteQueue.Clear();
+            _packetIdCounter = 3;
+            
+            _threadCancellationTokenSource?.Cancel();
+            _workerThread?.Join();
+            _threadCancellationTokenSource?.Dispose();
 
-            _packetIdCounter = 0;
+            _threadCancellationTokenSource = null;
+            _workerThread = null;
         }
 
         public async Task<byte[]> WriteCommandAsync(
@@ -182,28 +294,20 @@ namespace Squadmania.Squad.Rcon
 
             var commandResult = new RconClientCommandResult();
 
-            _rconClientCommands[packetId] = commandResult;
+            _pendingCommandResults[packetId] = commandResult;
             WritePackets(commandPacket, emptyPacket);
-            
-            var packets = await commandResult.Result;
 
-            return packets.SelectMany(x => x.Body).ToArray();
+            var packets = await commandResult.Result;
+            var packetsWithoutEnd = packets.ToArray()[..^1];
+            
+            return packetsWithoutEnd.SelectMany(x => x.Body).ToArray();
         }
 
         protected void WritePackets(
             params Packet[] packets
         )
         {
-            var buffer = packets.SelectMany(x => x.ToArray()).ToArray();
-
-            _socket?.BeginSend(buffer, 0, buffer.Length, SocketFlags.None, WritePacketsCallback, null);
-        }
-
-        private void WritePacketsCallback(
-            IAsyncResult asyncResult
-        )
-        {
-            _socket?.EndSend(asyncResult);
+            _packageWriteQueue.Enqueue(packets);
         }
 
         protected int GetNextPacketId()
@@ -213,182 +317,89 @@ namespace Squadmania.Squad.Rcon
         
         protected virtual void ProcessPacket(Packet packet)
         {
-            if (packet.Type == PacketType.ServerDataChatMessage)
+            if (packet is { Id: 3, Type: PacketType.ServerDataResponseValue })
             {
-                Task.Run(
-                    () =>
-                    {
-                        var rawMessage = Encoding.UTF8.GetString(packet.Body);
-
-                        var chatMessage = _chatMessageParser.Parse(rawMessage);
-                        if (chatMessage.HasValue)
-                        {
-                            OnChatMessageReceived(chatMessage.Value);
-                            return;
-                        }
-
-                        var squadCreatedMessage = _squadCreatedMessageParser.Parse(rawMessage);
-                        if (!squadCreatedMessage.HasValue)
-                        {
-                            return;
-                        }
-                        
-                        OnSquadCreatedMessageReceived(squadCreatedMessage.Value);
-                    }
-                );
+                OnPingReceived();
+                _lastReceivedPing = DateTime.UtcNow;
                 return;
             }
             
-            if (!_rconClientCommands.TryGetValue(packet.Id, out var command))
+            OnPacketReceived(packet);
+            
+            if (packet.Type == PacketType.ServerDataChatMessage)
+            {
+                var rawMessage = Encoding.UTF8.GetString(packet.Body);
+
+                var chatMessage = _chatMessageParser.Parse(rawMessage);
+                if (chatMessage.HasValue)
+                {
+                    OnChatMessageReceived(chatMessage.Value);
+                    return;
+                }
+
+                var squadCreatedMessage = _squadCreatedMessageParser.Parse(rawMessage);
+                if (!squadCreatedMessage.HasValue)
+                {
+                    return;
+                }
+                
+                OnSquadCreatedMessageReceived(squadCreatedMessage.Value);
+                return;
+            }
+            
+            if (!_pendingCommandResults.TryGetValue(packet.Id, out var command))
             {
                 return;
             }
 
             command.AddPacket(packet);
 
-            if (!(packet is
+            if (packet is not
                 {
                     Type: PacketType.ServerDataResponseValue,
                     Body: { Length: 0 }
-                }))
+                })
             {
                 return;
             }
 
-            Task.Run(() => command.Complete());
-            _rconClientCommands.TryRemove(packet.Id, out _);
-        }
-
-        private void BeginBufferOrReceive(
-            byte[] data,
-            int size,
-            AsyncCallback callback,
-            object state
-        )
-        {
-            var previousBufferLength = PreviousBuffer.Length;
-            if (previousBufferLength == 0)
-            {
-                _socket?.BeginReceive(data, 0, size, SocketFlags.None, callback, state);
-                return;
-            }
-            
-            if (previousBufferLength >= size)
-            {
-                // all requested bytes can be fetched from the buffer
-                PreviousBuffer[..4].CopyTo(data, 0);
-                PreviousBuffer = PreviousBuffer[4..];
-                
-                callback.Invoke(new CompletedAsyncResult(state));
-                return;
-            }
-            
-            // we need to also fetch bytes from the network stream
-            PreviousBuffer.CopyTo(data, 0);
-            PreviousBuffer = Array.Empty<byte>();
-            
-            var remainingCount = size - previousBufferLength;
-
-            _socket?.BeginReceive(data, previousBufferLength, remainingCount, SocketFlags.None, callback, state);
-        }
-
-        private Packet Read()
-        {
-            var sizeBytes = new byte[4];
-            var bytesRead = BufferOrReceive(sizeBytes, 4);
-            if (bytesRead != 4)
-            {
-                throw new Exception("unexpected amount of bytes received");
-            }
-
-            var size = Packet.ParseSize(sizeBytes);
-            byte[] dataBytes;
-
-            if (size == 10 && _socket!.Available + PreviousBuffer.Length >= 17)
-            {
-                dataBytes = new byte[17];
-                bytesRead = BufferOrReceive(dataBytes, 17);
-                if (bytesRead != 17)
-                {
-                    throw new Exception("unexpected amount of bytes received");
-                }
-
-                var packet = Packet.Parse(dataBytes);
-                if (packet.IsBroken)
-                {
-                    return packet;
-                }
-
-                packet = Packet.Parse(dataBytes[..10]);
-
-                var newPreviousBuffer = new byte[7 + PreviousBuffer.Length];
-                dataBytes[10..].CopyTo(newPreviousBuffer, 0);
-                PreviousBuffer.CopyTo(newPreviousBuffer, 7);
-                PreviousBuffer = newPreviousBuffer;
-                
-                return packet;
-            }
-
-            dataBytes = new byte[size];
-            bytesRead = BufferOrReceive(dataBytes, size);
-            if (bytesRead != size)
-            {
-                throw new Exception("unexpected amount of bytes received");
-            }
-
-            return Packet.Parse(dataBytes);
-        }
-
-        private int BufferOrReceive(
-            byte[] data,
-            int size
-        )
-        {
-            var previousBufferLength = PreviousBuffer.Length;
-            if (previousBufferLength == 0)
-            {
-                return _socket!.Receive(data, 0, size, SocketFlags.None);
-            }
-
-            if (previousBufferLength >= size)
-            {
-                PreviousBuffer[..size].CopyTo(data, 0);
-                PreviousBuffer = PreviousBuffer[size..];
-
-                return size;
-            }
-            
-            PreviousBuffer.CopyTo(data, 0);
-            PreviousBuffer = Array.Empty<byte>();
-
-            var remainingCount = size - previousBufferLength;
-
-            var bytesReceived = _socket!.Receive(data, previousBufferLength, remainingCount, SocketFlags.None);
-            return previousBufferLength + bytesReceived;
+            command.Complete();
+            _pendingCommandResults.TryRemove(packet.Id, out _);
         }
         
-
-        private void Write(
+        private static void Send(
+            Socket socket,
             Packet packet
         )
         {
-            _socket?.Send(packet.ToArray());
+            var packetBytes = packet.ToArray();
+
+            var bytesSent = socket.Send(packetBytes);
+            if (bytesSent != packetBytes.Length)
+            {
+                throw new Exception("some bad packages wanted to get sent");
+            }
         }
 
-        private void Write(
+        private static void Send(
+            Socket socket,
             params Packet[] packets
         )
         {
-            _socket?.Send(
-                packets
-                    .SelectMany(x => x.ToArray())
-                    .ToArray()
-            );
+            var packetBytes = packets
+                .SelectMany(x => x.ToArray())
+                .ToArray();
+            
+            var bytesSent = socket.Send(packetBytes);
+            if (bytesSent != packetBytes.Length)
+            {
+                throw new Exception("some bad packages wanted to get sent");
+            }
         }
 
         public void Dispose()
         {
-            Disconnect();
+            Stop();
         }
 
         #region Command Definitions
@@ -723,6 +734,8 @@ namespace Squadmania.Squad.Rcon
 
         #endregion
 
+        #region Invocations 
+        
         protected virtual void OnChatMessageReceived(
             ChatMessage chatMessage
         )
@@ -736,5 +749,31 @@ namespace Squadmania.Squad.Rcon
         {
             SquadCreatedMessageReceived?.Invoke(squadCreatedMessage);
         }
+
+        protected virtual void OnPacketReceived(
+            Packet packet
+        )
+        {
+            PacketReceived?.Invoke(packet);
+        }
+
+        protected virtual void OnConnected()
+        {
+            Connected?.Invoke();
+        }
+
+        protected virtual void OnBytesReceived(
+            byte[] bytes
+        )
+        {
+            BytesReceived?.Invoke(bytes);
+        }
+
+        protected virtual void OnPingReceived()
+        {
+            PingReceived?.Invoke();
+        }
+        
+        #endregion
     }
 }

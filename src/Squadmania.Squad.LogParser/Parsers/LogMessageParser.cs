@@ -31,7 +31,7 @@ namespace Squadmania.Squad.LogParser.Parsers
                     match.Groups[1].Value,
                     "yyyy.MM.dd-HH.mm.ss:fff",
                     CultureInfo.InvariantCulture
-                ),
+                ).ToUniversalTime(),
                 rawLog,
                 ParsePayload(type, rawLog)
             );

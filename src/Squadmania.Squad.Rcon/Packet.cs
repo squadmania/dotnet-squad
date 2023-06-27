@@ -14,6 +14,8 @@ namespace Squadmania.Squad.Rcon
     /// </summary>
     public readonly struct Packet
     {
+        public static readonly Packet Empty = new(0, 0, Array.Empty<byte>());
+        
         public const int SizeFieldLength = 4;
         public const int IdFieldLength = 4;
         public const int TypeFieldLength = 4;

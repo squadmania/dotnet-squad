@@ -6,6 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <AssemblyName>Squadmania.Squad.RconExample</AssemblyName>
+    <RootNamespace>Squadmania.Squad.RconExample</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
