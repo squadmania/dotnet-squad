@@ -19,6 +19,7 @@ namespace Squadmania.Squad.Rcon
         public ListLayersParser ListLayersParser { get; set; } = new ();
         public ListLevelsParser ListLevelsParser { get; set; } = new ();
         public ListPlayersParser ListPlayersParser { get; set; } = new ();
+        public ListTeamsParser ListTeamsParser { get; set; } = new ();
 
         private readonly ChatMessageParser _chatMessageParser = new();
         private readonly SquadCreatedMessageParser _squadCreatedMessageParser = new();
@@ -43,8 +44,9 @@ namespace Squadmania.Squad.Rcon
         public event Action<Packet>? PacketReceived; 
         public event Action<ChatMessage>? ChatMessageReceived;
         public event Action<SquadCreatedMessage>? SquadCreatedMessageReceived;
+        public event Action<Exception>? ExceptionThrown; 
         public event Action<byte[]>? BytesReceived;
-        public event Action? PingReceived; 
+        public event Action? PingReceived;
 
         public RconClient(
             IPEndPoint endPoint,
@@ -67,61 +69,78 @@ namespace Squadmania.Squad.Rcon
 
             while (!cancellationTokenSource.IsCancellationRequested)
             {
-                using var socket = new Socket(_endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-                socket.Connect(_endPoint);
-                Authenticate(socket);
-                OnConnected();
-
-                var buffer = new byte[4096 + 7]; // maximum packet size + 7 bytes of broken package body
-                var actualBufferLength = 0;
-
-                while (!cancellationTokenSource.IsCancellationRequested)
+                try
                 {
-                    var dataAvailable = socket.Available;
-                    if (dataAvailable > 0)
-                    {
-                        var dataToRead = Math.Min(buffer.Length - actualBufferLength, dataAvailable);
+                    using var socket = new Socket(_endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+                    socket.Connect(_endPoint);
+                    Authenticate(socket);
+                    OnConnected();
 
-                        var bytesRead = socket.Receive(buffer, actualBufferLength, dataToRead, SocketFlags.None);
-                        if (bytesRead != dataToRead)
+                    var buffer = new byte[4096 + 7]; // maximum packet size + 7 bytes of broken package body
+                    var actualBufferLength = 0;
+
+                    while (!cancellationTokenSource.IsCancellationRequested)
+                    {
+                        var dataAvailable = socket.Available;
+                        if (dataAvailable > 0)
                         {
-                            throw new Exception("some bad bytes came in");
+                            var dataToRead = Math.Min(buffer.Length - actualBufferLength, dataAvailable);
+
+                            var bytesRead = socket.Receive(buffer, actualBufferLength, dataToRead, SocketFlags.None);
+                            if (bytesRead != dataToRead)
+                            {
+                                throw new Exception("some bad bytes came in");
+                            }
+
+                            OnBytesReceived(buffer[actualBufferLength..(actualBufferLength + dataToRead)]);
+
+                            actualBufferLength += bytesRead;
                         }
 
-                        OnBytesReceived(buffer[actualBufferLength..(actualBufferLength + dataToRead)]);
-
-                        actualBufferLength += bytesRead;
-                    }
-
-                    if (actualBufferLength > 0)
-                    {
-                        var packetSize = Packet.ParseSize(buffer[..4]);
-
-                        if (packetSize <= actualBufferLength)
+                        if (actualBufferLength > 0)
                         {
-                            ShiftBytesLeft(buffer, 4);
-                            actualBufferLength -= 4;
-                            
-                            Packet packet;
+                            var packetSize = Packet.ParseSize(buffer[..4]);
 
-                            // check for broken package:
-                            // The Squad server sends an invalid packet on an appending empty exec command packet.
-                            // It has to be filtered out here, because it is not needed and makes no sense regarding the Source Rcon protocol.
-                            if (packetSize == 10)
+                            if (packetSize <= actualBufferLength)
                             {
-                                var maybeBrokenBuffer = buffer[..17];
-                                packet = Packet.Parse(maybeBrokenBuffer);
-                                if (packet.IsBroken)
+                                ShiftBytesLeft(buffer, 4);
+                                actualBufferLength -= 4;
+
+                                Packet packet;
+
+                                // check for broken package:
+                                // The Squad server sends an invalid packet on an appending empty exec command packet.
+                                // It has to be filtered out here, because it is not needed and makes no sense regarding the Source Rcon protocol.
+                                if (packetSize == 10)
                                 {
-                                    ShiftBytesLeft(buffer, 17);
-                                    actualBufferLength -= 17;
+                                    var maybeBrokenBuffer = buffer[..17];
+                                    packet = Packet.Parse(maybeBrokenBuffer);
+                                    if (packet.IsBroken)
+                                    {
+                                        ShiftBytesLeft(buffer, 17);
+                                        actualBufferLength -= 17;
+                                    }
+                                    else
+                                    {
+                                        packet = Packet.Parse(buffer[..10]);
+                                        ShiftBytesLeft(buffer, 10);
+                                        actualBufferLength -= 10;
+
+                                        try
+                                        {
+                                            ProcessPacket(packet);
+                                        }
+                                        catch (Exception e)
+                                        {
+                                            Console.WriteLine(e.Message);
+                                        }
+                                    }
                                 }
                                 else
                                 {
-                                    packet = Packet.Parse(buffer[..10]);
-                                    ShiftBytesLeft(buffer, 10);
-                                    actualBufferLength -= 10;
-
+                                    packet = Packet.Parse(buffer[..packetSize]);
+                                    ShiftBytesLeft(buffer, packetSize);
+                                    actualBufferLength -= packetSize;
                                     try
                                     {
                                         ProcessPacket(packet);
@@ -132,53 +151,44 @@ namespace Squadmania.Squad.Rcon
                                     }
                                 }
                             }
-                            else
-                            {
-                                packet = Packet.Parse(buffer[..packetSize]);
-                                ShiftBytesLeft(buffer, packetSize);
-                                actualBufferLength -= packetSize;
-                                try
-                                {
-                                    ProcessPacket(packet);
-                                }
-                                catch (Exception e)
-                                {
-                                    Console.WriteLine(e.Message);
-                                }
-                            }
                         }
+
+                        while (_packageWriteQueue.TryDequeue(out var packetGroup))
+                        {
+                            Send(socket, packetGroup);
+                        }
+
+                        // ping s.t. the connection is not destroyed
+                        if (nextPing < DateTime.UtcNow)
+                        {
+                            Send(socket, new Packet(3, PacketType.ServerDataExecCommand, "", false, Encoding.UTF8));
+                            nextPing = DateTime.UtcNow.AddMinutes(1);
+                        }
+
+                        if (DateTime.UtcNow - _lastReceivedPing > TimeSpan.FromMinutes(2))
+                        {
+                            break;
+                        }
+
+                        Thread.Yield();
                     }
 
-                    while (_packageWriteQueue.TryDequeue(out var packetGroup))
+                    foreach (var result in _pendingCommandResults)
                     {
-                        Send(socket, packetGroup);
+                        result.Value.Cancel();
                     }
 
-                    // ping s.t. the connection is not destroyed
-                    if (nextPing < DateTime.UtcNow)
-                    {
-                        Send(socket, new Packet(3, PacketType.ServerDataExecCommand, "", false, Encoding.UTF8));
-                        nextPing = DateTime.UtcNow.AddMinutes(1);
-                    }
+                    _pendingCommandResults.Clear();
+                    _packageWriteQueue.Clear();
+                    _packetIdCounter = 3;
 
-                    if (DateTime.UtcNow - _lastReceivedPing > TimeSpan.FromMinutes(2))
-                    {
-                        break;
-                    }
-
-                    Thread.Yield();
+                    Thread.Yield(); // yield the thread before starting a new connection
                 }
-                
-                foreach (var result in _pendingCommandResults)
+                catch (Exception e)
                 {
-                    result.Value.Cancel();
+                    OnExceptionThrown(e);
+                    Thread.Sleep(TimeSpan.FromSeconds(5));
                 }
-            
-                _pendingCommandResults.Clear();
-                _packageWriteQueue.Clear();
-                _packetIdCounter = 3;
-
-                Thread.Yield(); // yield the thread before starting a new connection
             }
         }
 
@@ -451,28 +461,70 @@ namespace Squadmania.Squad.Rcon
 
         public async Task AdminKickAsync(
             string playerName,
+            string reason,
             CancellationToken cancellationToken
         )
         {
-            await WriteCommandAsync($"AdminKick \"{playerName}\"", cancellationToken);
+            await WriteCommandAsync($"AdminKick \"{playerName}\" \"{reason}\"", cancellationToken);
         }
 
         public async Task AdminKickAsync(
             ulong steamId64,
+            string reason,
             CancellationToken cancellationToken
         )
         {
-            await WriteCommandAsync($"AdminKick \"{steamId64}\"", cancellationToken);
+            await WriteCommandAsync($"AdminKick \"{steamId64}\" \"{reason}\"", cancellationToken);
         }
 
         public async Task AdminKickByIdAsync(
             int playerId,
+            string reason,
             CancellationToken cancellationToken
         )
         {
-            await WriteCommandAsync($"AdminKickById {playerId}", cancellationToken);
+            await WriteCommandAsync($"AdminKickById {playerId} \"{reason}\"", cancellationToken);
         }
 
+        public async Task AdminBanAsync(
+            string playerName,
+            TimeSpan period,
+            string reason,
+            CancellationToken cancellationToken
+        )
+        {
+            await WriteCommandAsync(
+                $"AdminBan \"{playerName}\" \"{period.ToBanPeriod()}\" \"{reason}\"",
+                cancellationToken
+            );
+        }
+
+        public async Task AdminBanAsync(
+            ulong steamId64,
+            TimeSpan period,
+            string reason,
+            CancellationToken cancellationToken
+        )
+        {
+            await WriteCommandAsync(
+                $"AdminBan \"{steamId64}\" \"{period.ToBanPeriod()}\" \"{reason}\"",
+                cancellationToken
+            );
+        }
+
+        public async Task AdminBanByIdAsync(
+            int playerId,
+            TimeSpan period,
+            string reason,
+            CancellationToken cancellationToken
+        )
+        {
+            await WriteCommandAsync(
+                $"AdminBanById {playerId} \"{period.ToBanPeriod()}\" \"{reason}\"",
+                cancellationToken
+            );
+        }
+        
         public async Task AdminWarnAsync(
             string playerId,
             string reason,
@@ -581,12 +633,12 @@ namespace Squadmania.Squad.Rcon
         
         // AdminDisbandSquad <Team> <SquadIndex>
         public async Task AdminDisbandSquadAsync(
-            Team team,
+            TeamId teamId,
             int squadIndex,
             CancellationToken cancellationToken
         )
         {
-            await WriteCommandAsync($"AdminDisbandSquad {(int)team} {squadIndex}", cancellationToken);
+            await WriteCommandAsync($"AdminDisbandSquad {(int)teamId} {squadIndex}", cancellationToken);
         }
         
         // AdminChangeLayer <LayerName>
@@ -732,6 +784,15 @@ namespace Squadmania.Squad.Rcon
             await WriteCommandAsync($"AdminAddCameraman {steamId64}", cancellationToken);
         }
 
+        public async Task<List<Team>> ListTeamsAsync(
+            CancellationToken cancellationToken
+        )
+        {
+            var result = await WriteCommandAsync("ListSquads", cancellationToken);
+
+            return ListTeamsParser.Parse(Encoding.UTF8.GetString(result));
+        }
+
         #endregion
 
         #region Invocations 
@@ -774,6 +835,13 @@ namespace Squadmania.Squad.Rcon
             PingReceived?.Invoke();
         }
         
+        protected virtual void OnExceptionThrown(
+            Exception exception
+        )
+        {
+            ExceptionThrown?.Invoke(exception);
+        }
         #endregion
+
     }
 }

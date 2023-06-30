@@ -8,7 +8,7 @@ namespace Squadmania.Squad.Rcon.Models
             int id,
             ulong steamId64,
             string name,
-            Team team,
+            TeamId teamId,
             bool isLeader,
             string roleClass,
             int? squadId = null
@@ -17,7 +17,7 @@ namespace Squadmania.Squad.Rcon.Models
             Id = id;
             SteamId64 = steamId64;
             Name = name;
-            Team = team;
+            TeamId = teamId;
             IsLeader = isLeader;
             RoleClass = roleClass;
             SquadId = squadId;
@@ -26,7 +26,7 @@ namespace Squadmania.Squad.Rcon.Models
         public int Id { get; }
         public ulong SteamId64 { get; }
         public string Name { get; }
-        public Team Team { get; }
+        public TeamId TeamId { get; }
         public bool IsLeader { get; }
         public string RoleClass { get; }
         public int? SquadId { get; }
@@ -37,7 +37,7 @@ namespace Squadmania.Squad.Rcon.Models
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
-            return Id == other.Id && SteamId64 == other.SteamId64 && Name == other.Name && Team == other.Team && IsLeader == other.IsLeader && RoleClass == other.RoleClass && SquadId == other.SquadId;
+            return Id == other.Id && SteamId64 == other.SteamId64 && Name == other.Name && TeamId == other.TeamId && IsLeader == other.IsLeader && RoleClass == other.RoleClass && SquadId == other.SquadId;
         }
 
         public override bool Equals(
@@ -49,7 +49,7 @@ namespace Squadmania.Squad.Rcon.Models
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(Id, SteamId64, Name, (int)Team, IsLeader, RoleClass, SquadId);
+            return HashCode.Combine(Id, SteamId64, Name, (int)TeamId, IsLeader, RoleClass, SquadId);
         }
     }
 }

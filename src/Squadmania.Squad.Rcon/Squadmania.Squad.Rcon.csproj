@@ -5,23 +5,27 @@
     <Nullable>enable</Nullable>
     <LangVersion>9</LangVersion>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>1.0.0</Version>
+    <Version>1.2.1</Version>
     <Title>Squadmania.Squad.Rcon</Title>
     <Description>Allows connecting to a Squad game server RCON server.</Description>
     <Copyright>GNU AGPLv3</Copyright>
     <PackageProjectUrl>https://github.com/squadmania/dotnet-squad</PackageProjectUrl>
-    <PackageLicenseUrl>https://github.com/squadmania/dotnet-squad/blob/main/LICENSE</PackageLicenseUrl>
     <PackageIcon>logo.png</PackageIcon>
     <RepositoryUrl>https://github.com/squadmania/dotnet-squad</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>squad,rcon,gameserver,game</PackageTags>
     <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
-    <AssemblyVersion>1.0.0</AssemblyVersion>
-    <FileVersion>1.0.0</FileVersion>
+    <AssemblyVersion>1.2.1</AssemblyVersion>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <FileVersion>1.2.1</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <None Update="logo.png">
+      <Pack>True</Pack>
+      <PackagePath></PackagePath>
+    </None>
+    <None Include="../../LICENSE">
       <Pack>True</Pack>
       <PackagePath></PackagePath>
     </None>

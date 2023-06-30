@@ -6,7 +6,7 @@ namespace Squadmania.Squad.Rcon.Models
     {
         public Squad(
             int id,
-            Team team,
+            TeamId teamId,
             string teamName,
             string name,
             int size,
@@ -16,7 +16,7 @@ namespace Squadmania.Squad.Rcon.Models
         )
         {
             Id = id;
-            Team = team;
+            TeamId = teamId;
             TeamName = teamName;
             Name = name;
             Size = size;
@@ -26,7 +26,7 @@ namespace Squadmania.Squad.Rcon.Models
         }
         
         public int Id { get; }
-        public Team Team { get; }
+        public TeamId TeamId { get; }
         public string TeamName { get; }
         public string Name { get; }
         public int Size { get; }
@@ -40,7 +40,7 @@ namespace Squadmania.Squad.Rcon.Models
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
-            return Id == other.Id && Team == other.Team && TeamName == other.TeamName && Name == other.Name && Size == other.Size && CreatorName == other.CreatorName && CreatorSteamId64 == other.CreatorSteamId64 && IsLocked == other.IsLocked;
+            return Id == other.Id && TeamId == other.TeamId && TeamName == other.TeamName && Name == other.Name && Size == other.Size && CreatorName == other.CreatorName && CreatorSteamId64 == other.CreatorSteamId64 && IsLocked == other.IsLocked;
         }
 
         public override bool Equals(
@@ -52,7 +52,7 @@ namespace Squadmania.Squad.Rcon.Models
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(Id, (int)Team, TeamName, Name, Size, CreatorName, CreatorSteamId64, IsLocked);
+            return HashCode.Combine(Id, (int)TeamId, TeamName, Name, Size, CreatorName, CreatorSteamId64, IsLocked);
         }
     }
 }
