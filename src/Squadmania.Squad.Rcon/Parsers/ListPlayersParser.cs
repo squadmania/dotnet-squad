@@ -46,7 +46,7 @@ namespace Squadmania.Squad.Rcon.Parsers
                             int.Parse(match.Groups[1].Value),
                             ulong.Parse(match.Groups[2].Value),
                             match.Groups[3].Value,
-                            (Team)int.Parse(match.Groups[4].Value),
+                            (TeamId)int.Parse(match.Groups[4].Value),
                             match.Groups[6].Value == "True",
                             match.Groups[7].Value,
                             squadId

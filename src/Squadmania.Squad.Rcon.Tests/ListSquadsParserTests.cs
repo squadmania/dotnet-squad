@@ -17,7 +17,7 @@ ID: 1 | Name: Squad 1 | Size: 1 | Locked: False | Creator Name: pixlcrashr | Cre
             {
                 new(
                     1,
-                    Team.Team2,
+                    TeamId.Team2,
                     "60th Prince Assur Armored Brigade",
                     "Squad 1",
                     1,
@@ -37,7 +37,7 @@ Team ID: 2 (60th Prince Assur Armored Brigade)",
             {
                 new(
                     1,
-                    Team.Team1,
+                    TeamId.Team1,
                     "III Corps",
                     "Squad 1",
                     1,
@@ -59,7 +59,7 @@ Team ID: 2 (60th Prince Assur Armored Brigade)",
             {
                 new(
                     1,
-                    Team.Team1,
+                    TeamId.Team1,
                     "III Corps",
                     "Command Squad",
                     1,
@@ -69,7 +69,7 @@ Team ID: 2 (60th Prince Assur Armored Brigade)",
                 ),
                 new(
                     2,
-                    Team.Team1,
+                    TeamId.Team1,
                     "III Corps",
                     "Command Squad",
                     1,
@@ -79,7 +79,7 @@ Team ID: 2 (60th Prince Assur Armored Brigade)",
                 ),
                 new(
                     3,
-                    Team.Team1,
+                    TeamId.Team1,
                     "III Corps",
                     "Squad 3",
                     1,
