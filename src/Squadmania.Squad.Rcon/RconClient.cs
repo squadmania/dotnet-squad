@@ -67,11 +67,12 @@ namespace Squadmania.Squad.Rcon
 
             var nextPing = DateTime.UtcNow;
 
+            using var socket = new Socket(_endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+
             while (!cancellationTokenSource.IsCancellationRequested)
             {
                 try
                 {
-                    using var socket = new Socket(_endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
                     socket.Connect(_endPoint);
                     Authenticate(socket);
                     OnConnected();
@@ -188,6 +189,10 @@ namespace Squadmania.Squad.Rcon
                 {
                     OnExceptionThrown(e);
                     Thread.Sleep(TimeSpan.FromSeconds(5));
+                }
+                finally
+                {
+                    socket.Disconnect(true);
                 }
             }
         }
