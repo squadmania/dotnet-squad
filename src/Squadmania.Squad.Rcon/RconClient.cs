@@ -31,8 +31,6 @@ namespace Squadmania.Squad.Rcon
         
         private int _packetIdCounter = 3;
 
-        private DateTime _lastReceivedPing = DateTime.UtcNow;
-
         private readonly ConcurrentDictionary<int, RconClientCommandResult> _pendingCommandResults = new ();
 
         private readonly ConcurrentQueue<Packet[]> _packageWriteQueue = new ();
@@ -46,7 +44,6 @@ namespace Squadmania.Squad.Rcon
         public event Action<SquadCreatedMessage>? SquadCreatedMessageReceived;
         public event Action<Exception>? ExceptionThrown; 
         public event Action<byte[]>? BytesReceived;
-        public event Action? PingReceived;
 
         public RconClient(
             IPEndPoint endPoint,
@@ -76,7 +73,9 @@ namespace Squadmania.Squad.Rcon
         )
         {
             using var socket = new Socket(_endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-            
+            socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, false);
+            socket.LingerState = new LingerOption(false, 0);
+
             try
             {
                 socket.Connect(_endPoint);
@@ -133,14 +132,7 @@ namespace Squadmania.Squad.Rcon
                                     ShiftBytesLeft(buffer, 10);
                                     actualBufferLength -= 10;
 
-                                    try
-                                    {
-                                        ProcessPacket(packet);
-                                    }
-                                    catch (Exception e)
-                                    {
-                                        Console.WriteLine(e.Message);
-                                    }
+                                    ProcessPacket(packet);
                                 }
                             }
                             else
@@ -148,14 +140,8 @@ namespace Squadmania.Squad.Rcon
                                 packet = Packet.Parse(buffer[..packetSize]);
                                 ShiftBytesLeft(buffer, packetSize);
                                 actualBufferLength -= packetSize;
-                                try
-                                {
-                                    ProcessPacket(packet);
-                                }
-                                catch (Exception e)
-                                {
-                                    Console.WriteLine(e.Message);
-                                }
+                                
+                                ProcessPacket(packet);
                             }
                         }
                     }
@@ -164,17 +150,17 @@ namespace Squadmania.Squad.Rcon
                     {
                         Send(socket, packetGroup);
                     }
-
-                    if (DateTime.UtcNow - _lastReceivedPing > TimeSpan.FromMinutes(2))
-                    {
-                        break;
-                    }
-
-                    Thread.Yield();
+                    
+                    Thread.Sleep(50);
                 }
 
                 foreach (var result in _pendingCommandResults)
                 {
+                    if (result.Value.Result.IsCanceled)
+                    {
+                        continue;
+                    }
+                    
                     result.Value.Cancel();
                 }
 
@@ -190,12 +176,8 @@ namespace Squadmania.Squad.Rcon
             {
                 socket.Disconnect(false);
                 socket.Close();
-                socket.Dispose();
-                    
                 Thread.Sleep(TimeSpan.FromSeconds(10));
             }
-            
-            
         }
 
         private static void ShiftBytesLeft(
@@ -335,13 +317,18 @@ namespace Squadmania.Squad.Rcon
         {
             if (packet is { Id: 3, Type: PacketType.ServerDataResponseValue })
             {
-                OnPingReceived();
-                _lastReceivedPing = DateTime.UtcNow;
                 return;
             }
-            
-            OnPacketReceived(packet);
-            
+
+            try
+            {
+                OnPacketReceived(packet);
+            }
+            catch (Exception e)
+            {
+                OnExceptionThrown(e);
+            }
+
             if (packet.Type == PacketType.ServerDataChatMessage)
             {
                 var rawMessage = Encoding.UTF8.GetString(packet.Body);
@@ -349,7 +336,13 @@ namespace Squadmania.Squad.Rcon
                 var chatMessage = _chatMessageParser.Parse(rawMessage);
                 if (chatMessage.HasValue)
                 {
-                    OnChatMessageReceived(chatMessage.Value);
+                    try {
+                        OnChatMessageReceived(chatMessage.Value);
+                    }
+                    catch (Exception e)
+                    {
+                        OnExceptionThrown(e);
+                    }
                     return;
                 }
 
@@ -359,7 +352,13 @@ namespace Squadmania.Squad.Rcon
                     return;
                 }
                 
-                OnSquadCreatedMessageReceived(squadCreatedMessage.Value);
+                try {
+                    OnSquadCreatedMessageReceived(squadCreatedMessage.Value);
+                }
+                catch (Exception e)
+                {
+                    OnExceptionThrown(e);
+                }
                 return;
             }
             
@@ -836,11 +835,6 @@ namespace Squadmania.Squad.Rcon
             BytesReceived?.Invoke(bytes);
         }
 
-        protected virtual void OnPingReceived()
-        {
-            PingReceived?.Invoke();
-        }
-        
         protected virtual void OnExceptionThrown(
             Exception exception
         )
