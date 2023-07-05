@@ -65,83 +65,74 @@ namespace Squadmania.Squad.Rcon
                 throw new Exception("No cancellation token source provided for the thread");
             }
 
-            var nextPing = DateTime.UtcNow;
-
-            using var socket = new Socket(_endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-
             while (!cancellationTokenSource.IsCancellationRequested)
             {
-                try
+                HandleConnection(cancellationTokenSource.Token);
+            }
+        }
+
+        private void HandleConnection(
+            CancellationToken cancellationToken
+        )
+        {
+            using var socket = new Socket(_endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            
+            try
+            {
+                socket.Connect(_endPoint);
+                Authenticate(socket);
+                OnConnected();
+
+                var buffer = new byte[4096 + 7]; // maximum packet size + 7 bytes of broken package body
+                var actualBufferLength = 0;
+
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    socket.Connect(_endPoint);
-                    Authenticate(socket);
-                    OnConnected();
-
-                    var buffer = new byte[4096 + 7]; // maximum packet size + 7 bytes of broken package body
-                    var actualBufferLength = 0;
-
-                    while (!cancellationTokenSource.IsCancellationRequested)
+                    var dataAvailable = socket.Available;
+                    if (dataAvailable > 0)
                     {
-                        var dataAvailable = socket.Available;
-                        if (dataAvailable > 0)
+                        var dataToRead = Math.Min(buffer.Length - actualBufferLength, dataAvailable);
+
+                        var bytesRead = socket.Receive(buffer, actualBufferLength, dataToRead, SocketFlags.None);
+                        if (bytesRead != dataToRead)
                         {
-                            var dataToRead = Math.Min(buffer.Length - actualBufferLength, dataAvailable);
-
-                            var bytesRead = socket.Receive(buffer, actualBufferLength, dataToRead, SocketFlags.None);
-                            if (bytesRead != dataToRead)
-                            {
-                                throw new Exception("some bad bytes came in");
-                            }
-
-                            OnBytesReceived(buffer[actualBufferLength..(actualBufferLength + dataToRead)]);
-
-                            actualBufferLength += bytesRead;
+                            throw new Exception("some bad bytes came in");
                         }
 
-                        if (actualBufferLength > 0)
+                        OnBytesReceived(buffer[actualBufferLength..(actualBufferLength + dataToRead)]);
+
+                        actualBufferLength += bytesRead;
+                    }
+
+                    if (actualBufferLength > 0)
+                    {
+                        var packetSize = Packet.ParseSize(buffer[..4]);
+
+                        if (packetSize <= actualBufferLength)
                         {
-                            var packetSize = Packet.ParseSize(buffer[..4]);
+                            ShiftBytesLeft(buffer, 4);
+                            actualBufferLength -= 4;
 
-                            if (packetSize <= actualBufferLength)
+                            Packet packet;
+
+                            // check for broken package:
+                            // The Squad server sends an invalid packet on an appending empty exec command packet.
+                            // It has to be filtered out here, because it is not needed and makes no sense regarding the Source Rcon protocol.
+                            if (packetSize == 10)
                             {
-                                ShiftBytesLeft(buffer, 4);
-                                actualBufferLength -= 4;
-
-                                Packet packet;
-
-                                // check for broken package:
-                                // The Squad server sends an invalid packet on an appending empty exec command packet.
-                                // It has to be filtered out here, because it is not needed and makes no sense regarding the Source Rcon protocol.
-                                if (packetSize == 10)
+                                var maybeBrokenBuffer = buffer[..17];
+                                packet = Packet.Parse(maybeBrokenBuffer);
+                                if (packet.IsBroken)
                                 {
-                                    var maybeBrokenBuffer = buffer[..17];
-                                    packet = Packet.Parse(maybeBrokenBuffer);
-                                    if (packet.IsBroken)
-                                    {
-                                        ShiftBytesLeft(buffer, 17);
-                                        actualBufferLength -= 17;
-                                    }
-                                    else
-                                    {
-                                        packet = Packet.Parse(buffer[..10]);
-                                        ShiftBytesLeft(buffer, 10);
-                                        actualBufferLength -= 10;
-
-                                        try
-                                        {
-                                            ProcessPacket(packet);
-                                        }
-                                        catch (Exception e)
-                                        {
-                                            Console.WriteLine(e.Message);
-                                        }
-                                    }
+                                    ShiftBytesLeft(buffer, 17);
+                                    actualBufferLength -= 17;
                                 }
                                 else
                                 {
-                                    packet = Packet.Parse(buffer[..packetSize]);
-                                    ShiftBytesLeft(buffer, packetSize);
-                                    actualBufferLength -= packetSize;
+                                    packet = Packet.Parse(buffer[..10]);
+                                    ShiftBytesLeft(buffer, 10);
+                                    actualBufferLength -= 10;
+
                                     try
                                     {
                                         ProcessPacket(packet);
@@ -152,49 +143,59 @@ namespace Squadmania.Squad.Rcon
                                     }
                                 }
                             }
+                            else
+                            {
+                                packet = Packet.Parse(buffer[..packetSize]);
+                                ShiftBytesLeft(buffer, packetSize);
+                                actualBufferLength -= packetSize;
+                                try
+                                {
+                                    ProcessPacket(packet);
+                                }
+                                catch (Exception e)
+                                {
+                                    Console.WriteLine(e.Message);
+                                }
+                            }
                         }
-
-                        while (_packageWriteQueue.TryDequeue(out var packetGroup))
-                        {
-                            Send(socket, packetGroup);
-                        }
-
-                        // ping s.t. the connection is not destroyed
-                        if (nextPing < DateTime.UtcNow)
-                        {
-                            Send(socket, new Packet(3, PacketType.ServerDataExecCommand, "", false, Encoding.UTF8));
-                            nextPing = DateTime.UtcNow.AddMinutes(1);
-                        }
-
-                        if (DateTime.UtcNow - _lastReceivedPing > TimeSpan.FromMinutes(2))
-                        {
-                            break;
-                        }
-
-                        Thread.Yield();
                     }
 
-                    foreach (var result in _pendingCommandResults)
+                    while (_packageWriteQueue.TryDequeue(out var packetGroup))
                     {
-                        result.Value.Cancel();
+                        Send(socket, packetGroup);
                     }
 
-                    _pendingCommandResults.Clear();
-                    _packageWriteQueue.Clear();
-                    _packetIdCounter = 3;
+                    if (DateTime.UtcNow - _lastReceivedPing > TimeSpan.FromMinutes(2))
+                    {
+                        break;
+                    }
 
-                    Thread.Yield(); // yield the thread before starting a new connection
+                    Thread.Yield();
                 }
-                catch (Exception e)
+
+                foreach (var result in _pendingCommandResults)
                 {
-                    OnExceptionThrown(e);
-                    Thread.Sleep(TimeSpan.FromSeconds(5));
+                    result.Value.Cancel();
                 }
-                finally
-                {
-                    socket.Disconnect(true);
-                }
+
+                _pendingCommandResults.Clear();
+                _packageWriteQueue.Clear();
+                _packetIdCounter = 3;
             }
+            catch (Exception e)
+            {
+                OnExceptionThrown(e);
+            }
+            finally
+            {
+                socket.Disconnect(false);
+                socket.Close();
+                socket.Dispose();
+                    
+                Thread.Sleep(TimeSpan.FromSeconds(10));
+            }
+            
+            
         }
 
         private static void ShiftBytesLeft(
