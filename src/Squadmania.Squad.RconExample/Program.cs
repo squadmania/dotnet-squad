@@ -24,6 +24,11 @@ namespace Squadmania.Squad.RconExample
             rconClient.Connected += () => manualResetEvent.Set();
             rconClient.ExceptionThrown += e => Console.WriteLine(e.Message);
 
+            var currentMap = await rconClient.ShowCurrentMapAsync(default);
+            var nextMap = await rconClient.ShowNextMapAsync(default);
+            
+            Console.WriteLine($"current: {currentMap.LayerName}, next: {nextMap.LayerName}");
+
             manualResetEvent.WaitOne();
 
             while (true)

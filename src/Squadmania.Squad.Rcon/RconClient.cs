@@ -20,6 +20,8 @@ namespace Squadmania.Squad.Rcon
         public ListLevelsParser ListLevelsParser { get; set; } = new ();
         public ListPlayersParser ListPlayersParser { get; set; } = new ();
         public ListTeamsParser ListTeamsParser { get; set; } = new ();
+        public ShowCurrentMapParser ShowCurrentMapParser { get; set; } = new ();
+        public ShowNextMapParser ShowNextMapParser { get; set; } = new ();
 
         private readonly ChatMessageParser _chatMessageParser = new();
         private readonly SquadCreatedMessageParser _squadCreatedMessageParser = new();
@@ -794,6 +796,24 @@ namespace Squadmania.Squad.Rcon
             var result = await WriteCommandAsync("ListSquads", cancellationToken);
 
             return ListTeamsParser.Parse(Encoding.UTF8.GetString(result));
+        }
+
+        public async Task<CurrentMap?> ShowCurrentMapAsync(
+            CancellationToken cancellationToken
+        )
+        {
+            var result = await WriteCommandAsync("ShowCurrentMap", cancellationToken);
+
+            return ShowCurrentMapParser.Parse(Encoding.UTF8.GetString(result));
+        }
+
+        public async Task<NextMap?> ShowNextMapAsync(
+            CancellationToken cancellationToken
+        )
+        {
+            var result = await WriteCommandAsync("ShowNextMap", cancellationToken);
+
+            return ShowNextMapParser.Parse(Encoding.UTF8.GetString(result));
         }
 
         #endregion
