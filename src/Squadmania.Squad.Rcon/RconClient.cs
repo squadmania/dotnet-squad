@@ -24,6 +24,8 @@ namespace Squadmania.Squad.Rcon
         private readonly ChatMessageParser _chatMessageParser = new();
         private readonly SquadCreatedMessageParser _squadCreatedMessageParser = new();
 
+        private static readonly TimeSpan ReconnectTimeout = TimeSpan.FromSeconds(2);
+
         public bool IsStarted => _workerThread != null;
         
         private readonly IPEndPoint _endPoint;
@@ -37,7 +39,7 @@ namespace Squadmania.Squad.Rcon
 
         private Thread? _workerThread;
         private CancellationTokenSource? _threadCancellationTokenSource;
-        
+
         public event Action? Connected;
         public event Action<Packet>? PacketReceived; 
         public event Action<ChatMessage>? ChatMessageReceived;
@@ -153,20 +155,6 @@ namespace Squadmania.Squad.Rcon
                     
                     Thread.Sleep(50);
                 }
-
-                foreach (var result in _pendingCommandResults)
-                {
-                    if (result.Value.Result.IsCanceled)
-                    {
-                        continue;
-                    }
-                    
-                    result.Value.Cancel();
-                }
-
-                _pendingCommandResults.Clear();
-                _packageWriteQueue.Clear();
-                _packetIdCounter = 3;
             }
             catch (Exception e)
             {
@@ -174,9 +162,19 @@ namespace Squadmania.Squad.Rcon
             }
             finally
             {
+                // requeue all pending command results
+                _packageWriteQueue.Clear();
+                _packetIdCounter = 3;
+                
+                foreach (var (_, result) in _pendingCommandResults)
+                {
+                    result.ClearPackets();
+                    _packageWriteQueue.Enqueue(result.RequestPackets);
+                }
+                
                 socket.Disconnect(false);
                 socket.Close();
-                Thread.Sleep(TimeSpan.FromSeconds(10));
+                Thread.Sleep(ReconnectTimeout);
             }
         }
 
@@ -290,7 +288,7 @@ namespace Squadmania.Squad.Rcon
                 Array.Empty<byte>()
             );
 
-            var commandResult = new RconClientCommandResult();
+            var commandResult = new RconClientCommandResult(new []{commandPacket, emptyPacket});
 
             _pendingCommandResults[packetId] = commandResult;
             WritePackets(commandPacket, emptyPacket);

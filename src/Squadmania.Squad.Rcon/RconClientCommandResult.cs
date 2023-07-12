@@ -11,9 +11,11 @@ namespace Squadmania.Squad.Rcon
 
         private readonly List<Packet> _packets = new List<Packet>();
         public IReadOnlyList<Packet> Packets => _packets;
+        public readonly Packet[] RequestPackets;
 
-        public RconClientCommandResult()
+        public RconClientCommandResult(Packet[] requestPackets)
         {
+            RequestPackets = requestPackets;
             _taskCompletionSource =
                 new TaskCompletionSource<IReadOnlyList<Packet>>();
         }
@@ -23,6 +25,11 @@ namespace Squadmania.Squad.Rcon
         )
         {
             _packets.Add(packet);
+        }
+
+        public void ClearPackets()
+        {
+            _packets.Clear();
         }
 
         public void Cancel()
